@@ -5,6 +5,7 @@ const playlistSchema = new Schema({
   ownerID: { type: String, required: true },
   userName : String,
   playlistName : String,
+  playlistNameLower : String,
   episodes: [{
     episodeID : String,
     source : String

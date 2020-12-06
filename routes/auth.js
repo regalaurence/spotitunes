@@ -145,7 +145,7 @@ router.get('/userProfile', (req, res) => {
           return await Podcast.findOne({ _id: id })
         }))
       }).then(podcasts => {
-            console.log("After map: ", podcasts) // Array of podcast objects in Mongobd incl. origin
+            // console.log("After map: ", podcasts) // Array of podcast objects in Mongobd incl. origin
             const podcastDetails = Promise.all(podcasts.map(async (podcast) => {
               //console.log(podcast.podcastId)
               if (podcast.origin === "spotify") {
