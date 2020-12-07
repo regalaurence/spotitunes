@@ -9,22 +9,15 @@ const bcryptjs = require('bcryptjs');
 const mongoose = require('mongoose');
 const Podcast = require('../models/Podcast');
 const unirest = require('unirest');
+const setupSpotify = require('../service/util/setupSpotify')
+const getEpisodesSummaries = require('../service/episodes/getEpisodesSummaries');
+const checkPlaylistName = require('../service/util/checkPlaylistName');
 
 //require spotify Web api
-const SpotifyWebApi = require('spotify-web-api-node');
 const { findById } = require('../models/Podcast');
 
-// setting the spotify-api goes here:
-const spotifyApi = new SpotifyWebApi({
-  clientId: process.env.CLIENT_ID,
-  clientSecret: process.env.CLIENT_SECRET
-});
 
-// Retrieve an access token
-spotifyApi
-  .clientCredentialsGrant()
-  .then(data => spotifyApi.setAccessToken(data.body['access_token']))
-  .catch(error => console.log('Something went wrong when retrieving an access token', error));
+const spotifyApi = setupSpotify(process.env.CLIENT_ID, process.env.CLIENT_SECRET);
 
 // display the signup form to users
 
@@ -35,65 +28,32 @@ router.get('/signup', (req, res) => {
 
 // display playlist
 
-router.get('/playlists/bookmarked', (req, res) => {
+router.get('/playlists/:playlistId', (req, res) => {
+  const playlistId = req.params.playlistId;
   Playlist.find({ ownerID: req.session.currentUser._id })
     .then((playlists) => {
-      let playlistsAll = playlists
-      let playlistEpisodes = []
-      let playlistObject = {
-        name: playlists[0].playlistName,
-        content: playlistEpisodes
-      }
-      let requestPromises = []
-    //  console.log("THIS IS THE PLAYLIST: " + playlistsAll)
-      for (let i = 0; i < playlists[0].episodes.length; i++) {
-        if (playlists[0].episodes[i].source === "listennotes") {
-          let request = unirest.get(`https://listen-api.listennotes.com/api/v2/episodes/${playlists[0].episodes[i].episodeID}`)
-            .header('X-ListenAPI-Key', 'eca50a3f8a6b4c6e96b837681be6bd3f')
-            .then((episode) => {
-              // WORKS console.log("THIS IS THE EPiSODE : " + episode.body.title)
-              let episodeSummary = {
-                id: episode.body.id,
-                title: episode.body.title,
-                link: episode.body.link,
-                image: episode.body.image,
-                description: episode.body.description,
-                podcast: episode.body.title,
-                podcastID: episode.body.podcast.id,
-              }
-              playlistEpisodes.push(episodeSummary)
-              //console.log("THIS IS THE PLAYLIST if : " + playlistEpisodes)
-
-            })
-          requestPromises.push(request)
-
+      const playlist = playlists
+        .find(
+          playlist => 
+            (playlist._id === playlistId) || checkPlaylistName(playlist, playlistId)
+        );
+        if (playlist) {
+          const currentEpisodes = playlist.episodes
+          let playlistEpisodes = []
+          let playlistObject = {
+            name: playlist.playlistName,
+            content: playlistEpisodes
+          }
+          const requestPromises = getEpisodesSummaries(currentEpisodes, spotifyApi, playlistEpisodes)
+    
+          Promise.all(requestPromises).then(() => {
+            res.render('users/playlists', { playlistObject: playlistObject, playlistsAll: playlists })
+          })
+        } else {
+          // return
+          res.status(404);
         }
-        else if (playlists[0].episodes[i].source === "spotify") {
-          let request = spotifyApi
-            .getEpisode(playlists[0].episodes[i].episodeID, { market: "DE" })
-            .then((episode) => {
-              // WORKS console.log("THIS IS THE EPiSODE : " + episode.body.name)
-              let episodeSummary = {
-                id: episode.body.id,
-                title: episode.body.name,
-                link: episode.body.external_urls.spotify,
-                image: episode.body.images[0].url,
-                description: episode.body.description,
-                podcast: episode.body.show.name,
-                podcastID: episode.body.show.id,
-              }
-              //WORKS console.log("THIS is THE EPOSIODE :" + episodeSummary.id)
-              playlistEpisodes.push(episodeSummary)
-              //console.log("THIS IS THE PLAYLIST else : " + playlistEpisodes)
-
-            })
-          requestPromises.push(request)
-        }
-      }
-
-      Promise.all(requestPromises).then(() => {
-        res.render('users/playlists', { playlistObject: playlistObject, playlistsAll: playlistsAll })
-      })
+      
     })
 })
 
